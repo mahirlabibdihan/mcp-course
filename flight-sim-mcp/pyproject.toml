@@ -1,0 +1,12 @@
+[project]
+name = "flight-sim-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic[email]",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.22.0",
+    "fastmcp>=2.14.1",
+]
