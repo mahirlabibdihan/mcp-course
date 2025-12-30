@@ -10,8 +10,75 @@ from pathlib import Path
 from mcp.types import Tool
 import os
 import logging
+from rank_bm25 import BM25Okapi
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 load_dotenv()  # load environment variables from .env
+
+class ToolRetrieval:
+    """Manages BM25-based tool retrieval"""
+    
+    def __init__(self):
+        self.bm25 = None
+        self.tool_names = []
+        self.tool_metadata = {}
+        self.documents = []
+    
+    def index_tools(self, tools: List[Tool]):
+        """Create BM25 index for tools"""
+        self.tool_names = []
+        self.documents = []
+        self.tool_metadata = {}
+        
+        for tool in tools:
+            # Create rich document for BM25
+            doc_content = f"{tool.name} {tool.description}"
+            
+            # Add parameter names and descriptions
+            if "properties" in tool.inputSchema:
+                props = tool.inputSchema["properties"]
+                for param_name, param_info in props.items():
+                    param_desc = param_info.get('description', '')
+                    doc_content += f" {param_name} {param_desc}"
+            
+            # Tokenize document
+            tokens = doc_content.lower().split()
+            self.documents.append(tokens)
+            self.tool_names.append(tool.name)
+            self.tool_metadata[tool.name] = {
+                "description": tool.description,
+                "input_schema": tool.inputSchema,
+                "original_tool": tool
+            }
+        
+        # Create BM25 index
+        self.bm25 = BM25Okapi(self.documents)
+        logging.info(f"BM25 index created for {len(self.tool_names)} tools")
+    
+    def retrieve_tools(self, query: str, top_k: int = 3) -> List[str]:
+        """Retrieve top-k relevant tools using BM25"""
+        if self.bm25 is None:
+            return []
+        
+        # Tokenize query
+        query_tokens = query.lower().split()
+        
+        # Get BM25 scores
+        scores = self.bm25.get_scores(query_tokens)
+        
+        # Rank tools by score
+        ranked_tools = sorted(
+            zip(self.tool_names, scores),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        
+        # Return top-k tool names with scores
+        top_tools = ranked_tools[:top_k]
+        retrieved_tools = [tool[0] for tool in top_tools if tool[1] > 0]
+        
+        logging.info(f"BM25 retrieval scores: {[(t[0], round(t[1], 3)) for t in top_tools]}")
+        
+        return retrieved_tools if retrieved_tools else [self.tool_names[0]] if self.tool_names else []
 
 
 class MCPClient:
@@ -28,6 +95,7 @@ class MCPClient:
         self.model = "openai/gpt-5-mini"
         self.servers = []
         self.tools = []
+        self.tool_retrieval = None
 
     async def process_llm_response(self, llm_response: str) -> str:
         """Process the LLM response and execute tools if needed.
@@ -111,9 +179,11 @@ class MCPClient:
         # List available tools
         response = await self.session.list_tools()
         tools = response.tools
-        self.tools.append(tools)
         print("\nConnected to server with tools:", [tool.name for tool in tools])
-        self.servers.append(self.session)
+        
+        self.tool_retrieval = ToolRetrieval()
+        self.tool_retrieval.index_tools(tools)
+        print("BM25 index created for RAG-based tool selection")
 
     def format_for_llm(self, tool: Tool) -> str:
         """Format tool information for LLM.
@@ -166,42 +236,45 @@ Arguments:
             text = str(resp)
         return text
     
+    def _build_context_from_history(self, query: str, messages: List[dict]) -> str:
+        """Build a rich search context from conversation history and current query"""
+        context_parts = []
+        
+        # Add recent conversation context (last 4 messages)
+        recent_messages = messages[-4:] if len(messages) > 4 else messages
+        for msg in recent_messages:
+            if msg.get("role") in ["user", "assistant"]:
+                content = msg.get("content", "")
+                if content:
+                    context_parts.append(content)
+        
+        # Add current query
+        context_parts.append(query)
+        
+        # Combine all context
+        full_context = " ".join(context_parts)
+        logging.info(f"Search context: {full_context[:200]}...")
+        
+        return full_context
+    
+    
     async def process_query(self, query: str, messages) -> str:
         """Process a query using Claude and available tools"""
         # Describe available tools to the model and include the user query
-        messages.append({"role": "user", "content": query})
-        import json
-        
-        # Call OpenAI synchronously in a thread to avoid blocking the event loop
-        def _call_openai():
-            return self.extract_text(self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=1000,
-                # tools=available_tools,
-            ))
 
-        text = await asyncio.to_thread(_call_openai)
-        logging.info("\n> Assistant: %s", text)
+        search_context = self._build_context_from_history(query, messages)
         
-        result = await self.process_llm_response(text)
-        if result != text:
-            messages.append({"role": "assistant", "content": text})
-            messages.append({"role": "system", "content": result})
-            final_response = await asyncio.to_thread(_call_openai)
-            logging.info("\n> Final response: %s", final_response)
-            messages.append({"role": "assistant", "content": final_response})
-        else:
-            messages.append({"role": "assistant", "content": text})
-        return result
-
-    async def chat_loop(self):
-        """Run an interactive chat loop"""
-        print("\nMCP Client Started!")
-        print("Type your queries or 'quit' to exit.")
+        # Use BM25 to retrieve relevant tools
+        relevant_tool_names = self.tool_retrieval.retrieve_tools(search_context, top_k=3)
+        logging.info(f"Retrieved tools via BM25: {relevant_tool_names}")
+        
+        # Get full tool objects
         response = await self.session.list_tools()
- 
-        tools_description = "\n".join([self.format_for_llm(tool) for tool in response.tools])
+        all_tools = response.tools
+        selected_tools = [t for t in all_tools if t.name in relevant_tool_names]
+        
+        # Build system prompt with only selected tools
+        tools_description = "\n".join([self.format_for_llm(tool) for tool in selected_tools])
         
         system_message = (
             "You are a helpful assistant with access to these tools:\n\n"
@@ -224,11 +297,43 @@ Arguments:
             "5. Avoid simply repeating the raw data\n\n"
             "Please use only the tools that are explicitly defined above."
         )
-
+        
         logging.info(f"\n# System Prompt: \n{system_message}")
-        messages = [
-            {"role": "system", "content": system_message},
-        ]
+        
+        messages.append({"role": "user", "content": query})
+
+        # Call OpenAI synchronously in a thread to avoid blocking the event loop
+        def _call_openai():
+            return self.extract_text(self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    *messages,
+                ],
+                max_tokens=1000,
+                # tools=available_tools,
+            ))
+
+        text = await asyncio.to_thread(_call_openai)
+        logging.info("\n> Assistant: %s", text)
+        
+        result = await self.process_llm_response(text)
+        if result != text:
+            messages.append({"role": "assistant", "content": text})
+            messages.append({"role": "system", "content": result})
+            final_response = await asyncio.to_thread(_call_openai)
+            logging.info("\n> Final response: %s", final_response)
+            messages.append({"role": "assistant", "content": final_response})
+        else:
+            messages.append({"role": "assistant", "content": text})
+        return result
+
+    async def chat_loop(self):
+        """Run an interactive chat loop"""
+        print("\nMCP Client Started!")
+        print("Type your queries or 'quit' to exit.")
+        
+        messages = []
         while True:
             try:
                 query = input("\n> Query: ").strip()

@@ -1,0 +1,223 @@
+(mcp-client) PS D:\Work\Samsung\mcp-course\mcp-client> uv run .\client-rag.py "D:\Work\Samsung\mcp-course\flight-sim-mcp\server.py"
+
+Connected to server with tools: ['search_flights', 'get_flight_details', 'create_booking', 'get_booking', 'cancel_booking', 'check_in']
+2025-12-25 13:53:27,694 - INFO - BM25 index created for 6 tools
+BM25 index created for RAG-based tool selection
+
+MCP Client Started!
+Type your queries or 'quit' to exit.
+
+> Query: What's the best flight from New york to LA on 25 th December, 2025 afternoon.
+2025-12-25 13:54:25,591 - INFO - Search context: What's the best flight from New york to LA on 25 th December, 2025 afternoon....
+2025-12-25 13:54:25,615 - INFO - BM25 retrieval scores: [('get_flight_details', np.float64(1.329)), ('create_booking', np.float64(0.953)), ('cancel_booking', np.float64(0.328))]
+2025-12-25 13:54:25,615 - INFO - Retrieved tools via BM25: ['get_flight_details', 'create_booking', 'cancel_booking']
+2025-12-25 13:54:25,625 - INFO - 
+# System Prompt: 
+You are a helpful assistant with access to these tools:
+
+Tool: get_flight_details
+Description: Get detailed information about a specific flight.
+
+Args:
+    flight_id: The unique flight identifier
+
+Returns:
+    Detailed flight information including real-time status
+Arguments:
+- flight_id: No description (required)
+
+Tool: create_booking
+Description: Book a flight for one or more passengers.
+
+Args:
+    flight_id: The flight to book
+    passengers: List of passenger details with first_name, last_name, email, phone
+    seat_class: Class of service (economy, business, first)
+    payment_token: Payment authorization token
+    add_insurance: Whether to add travel insurance
+    special_requests: Any special requests or notes
+
+Returns:
+    Booking confirmation with PNR and booking details
+Arguments:
+- flight_id: No description (required)
+- passengers: No description (required)
+- seat_class: No description
+- payment_token: No description
+- add_insurance: No description
+- special_requests: No description
+
+Tool: cancel_booking
+Description: Cancel an existing booking.
+
+Args:
+    booking_id: The booking to cancel
+    reason: Optional cancellation reason
+
+Returns:
+    Cancellation confirmation and refund information
+Arguments:
+- booking_id: No description (required)
+- reason: No description
+
+Choose the appropriate tool based on the user's question. If no tool is needed, reply directly.
+
+IMPORTANT: When you need to use a tool, you must ONLY respond with the exact JSON object format below, nothing else:
+{
+    "tool": "tool-name",
+    "arguments": {
+        "argument-name": "value"
+    }
+}
+
+After receiving a tool's response:
+1. Transform the raw data into a natural, conversational response
+2. Keep responses concise but informative
+3. Focus on the most relevant information
+4. Use appropriate context from the user's question
+5. Avoid simply repeating the raw data
+
+Please use only the tools that are explicitly defined above.
+2025-12-25 13:54:34,700 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-12-25 13:54:54,606 - INFO - 
+> Assistant: I can help — a few quick questions so I can recommend the best options for you:
+
+1. Which New York airport do you prefer: JFK, LaGuardia (LGA), or Newark (EWR)?
+2. Which Los Angeles-area airport: LAX, Burbank (BUR), or Orange County (SNA)?
+3. Do you want nonstop flights only?
+4. What do you prioritize: lowest price, shortest travel time, most comfortable
+
+> Query: 1. JFK, 2. LAX, 3. Yes. 4. Most Comfortable.
+2025-12-25 13:55:23,163 - INFO - Search context: What's the best flight from New york to LA on 25 th December, 2025 afternoon. I can help — a few quick questions so I can recommend the best options for you:
+
+1. Which New York airport do you prefer: ...
+2025-12-25 13:55:23,185 - INFO - BM25 retrieval scores: [('search_flights', np.float64(4.273)), ('create_booking', np.float64(3.944)), ('get_booking', np.float64(2.408))]
+2025-12-25 13:55:23,189 - INFO - Retrieved tools via BM25: ['search_flights', 'create_booking', 'get_booking']
+2025-12-25 13:55:23,197 - INFO -
+# System Prompt:
+You are a helpful assistant with access to these tools:
+
+Tool: search_flights
+Description: Search for available flights between airports.
+
+Args:
+    origin: Origin airport code (3 letters, e.g., 'SFO')
+    destination: Destination airport code (3 letters, e.g., 'JFK')
+    departure_date: Departure date in YYYY-MM-DD format
+    return_date: Optional return date for round trips in YYYY-MM-DD format
+    passengers: Number of passengers (1-9)
+    seat_class: Class of service (economy, premium_economy, business, first)
+    nonstop_only: Only show nonstop flights
+    max_price: Maximum price per person
+    preferred_airlines: List of preferred airline codes
+
+Returns:
+    Dictionary containing search results with outbound and return flights
+Arguments:
+- origin: No description (required)
+- destination: No description (required)
+- departure_date: No description (required)
+- return_date: No description
+- passengers: No description
+- seat_class: No description
+- nonstop_only: No description
+- max_price: No description
+- preferred_airlines: No description
+
+Tool: create_booking
+Description: Book a flight for one or more passengers.
+
+Args:
+    flight_id: The flight to book
+    passengers: List of passenger details with first_name, last_name, email, phone
+    seat_class: Class of service (economy, business, first)
+    payment_token: Payment authorization token
+    add_insurance: Whether to add travel insurance
+    special_requests: Any special requests or notes
+
+Returns:
+    Booking confirmation with PNR and booking details
+Arguments:
+- flight_id: No description (required)
+- passengers: No description (required)
+- seat_class: No description
+- payment_token: No description
+- add_insurance: No description
+- special_requests: No description
+
+Tool: get_booking
+Description: Retrieve booking details using booking ID.
+
+Args:
+    booking_id: The booking ID or PNR
+    email: Email for verification (optional)
+
+Returns:
+    Complete booking information
+Arguments:
+- booking_id: No description (required)
+- email: No description
+
+Choose the appropriate tool based on the user's question. If no tool is needed, reply directly.
+
+IMPORTANT: When you need to use a tool, you must ONLY respond with the exact JSON object format below, nothing else:
+{
+    "tool": "tool-name",
+    "arguments": {
+        "argument-name": "value"
+    }
+}
+
+After receiving a tool's response:
+1. Transform the raw data into a natural, conversational response
+2. Keep responses concise but informative
+3. Focus on the most relevant information
+4. Use appropriate context from the user's question
+5. Avoid simply repeating the raw data
+
+Please use only the tools that are explicitly defined above.
+2025-12-25 13:55:24,689 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-12-25 13:55:29,329 - INFO - 
+> Assistant: {
+    "tool": "search_flights",
+    "arguments": {
+        "origin": "JFK",
+        "destination": "LAX",
+        "departure_date": "2025-12-25",
+        "passengers": 1,
+        "seat_class": "first",
+        "nonstop_only": true
+    }
+}
+2025-12-25 13:55:29,343 - INFO - Executing tool: search_flights
+2025-12-25 13:55:29,343 - INFO - With arguments: {'origin': 'JFK', 'destination': 'LAX', 'departure_date': '2025-12-25', 'passengers': 1, 'seat_class': 'first', 'nonstop_only': True}
+2025-12-25 13:55:29,429 - INFO - 
+> Tool execution result:
+{"success":true,"search_id":"SRCH-20251225135529","outbound_flights":[{"flight_id":"B6B6138-20251225-4","airline":"JetBlue Airways","flight_number":"B6B6138","origin":"JFK","destination":"LAX","departure":"2025-12-25T09:45:27.474603","arrival":"2025-12-25T12:45:27.474603","duration":"3h 0m","aircraft":"Boeing 787","price":{"economy":233.0,"premium_economy":349.5,"business":699.0,"first":1165.0,"currency":"USD"},"available_seats":{"economy":115,"premium_economy":14,"business":14,"first":1},"status":"scheduled","gate":"C32","terminal":"3","baggage_claim":null},{"flight_id":"DLDL685-20251225-0","airline":"Delta Air Lines","flight_number":"DLDL685","origin":"JFK","destination":"LAX","departure":"2025-12-25T12:30:27.474603","arrival":"2025-12-25T15:30:27.474603","duration":"3h 0m","aircraft":"Boeing 737","price":{"economy":369.0,"premium_economy":553.5,"business":1107.0,"first":1845.0,"currency":"USD"},"available_seats":{"economy":66,"premium_economy":23,"business":12,"first":4},"status":"scheduled","gate":"A36","terminal":"2","baggage_claim":null},{"flight_id":"UAUA536-20251225-1","airline":"United Airlines","flight_number":"UAUA536","origin":"JFK","destination":"LAX","departure":"2025-12-25T14:15:27.474603","arrival":"2025-12-25T17:15:27.474603","duration":"3h 0m","aircraft":"Airbus A350","price":{"economy":185.0,"premium_economy":277.5,"business":555.0,"first":925.0,"currency":"USD"},"available_seats":{"economy":76,"premium_economy":8,"business":18,"first":7},"status":"scheduled","gate":"C34","terminal":"2","baggage_claim":null},{"flight_id":"DLDL275-20251225-3","airline":"Delta Air Lines","flight_number":"DLDL275","origin":"JFK","destination":"LAX","departure":"2025-12-25T22:00:27.474603","arrival":"2025-12-26T01:00:27.474603","duration":"3h 0m","aircraft":"Airbus A320","price":{"economy":743.0,"premium_economy":1114.5,"business":2229.0,"first":3715.0,"currency":"USD"},"available_seats":{"economy":147,"premium_economy":26,"business":13,"first":1},"status":"scheduled","gate":"B16","terminal":"1","baggage_claim":null},{"flight_id":"B6B6767-20251225-2","airline":"JetBlue Airways","flight_number":"B6B6767","origin":"JFK","destination":"LAX","departure":"2025-12-25T22:15:27.474603","arrival":"2025-12-26T01:15:27.474603","duration":"3h 0m","aircraft":"Airbus A320","price":{"economy":794.0,"premium_economy":1191.0,"business":2382.0,"first":3970.0,"currency":"USD"},"available_seats":{"economy":12,"premium_economy":7,"business":17,"first":5},"status":"scheduled","gate":"B5","terminal":"3","baggage_claim":null}],"return_flights":null,"total_results":5,"search_criteria":{"origin":"JFK","destination":"LAX","departure_date":"2025-12-25","return_date":null,"passengers":1,"seat_class":"first"}}
+2025-12-25 13:55:30,404 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-12-25 13:55:42,864 - INFO - 
+> Final response: Best match for "most comfortable" in the afternoon is United Airlines flight UAUA536.
+
+Quick details
+- Flight: United UAUA536 (nonstop)
+- Departure: 2025-12-25 14:15 from JFK (Terminal 2, Gate C34)
+- Arrival: 2025-12-25 17:15 at LAX
+- Aircraft: Airbus A350 (quieter cabin, good long‑haul comfort)
+- Duration: 3h 0m
+- First-class price: $925 USD (per passenger)
+- First-class seats available: 7
+
+Why I recommend this
+- Departs solidly in the afternoon (matches your request).
+- Airbus A350 generally offers a more comfortable, quieter cabin and modern amenities than the 737/320 options listed.
+- First-class fare is substantially lower than Delta’s comparable first fare leaving earlier (Delta DL685 at 12:30 — $1,845), so it’s a good comfort-to-price balance.
+
+Other nearby options (for context)
+- Delta DL685 — departs 12:30 (Boeing 737), first-class $1,845.
+- JetBlue B6B6138 — departs 09:45 (not afternoon), first $1,165.
+
+Next steps
+- Want me to book UAUA536 for you? If so I’ll need passenger name(s), contact email/phone, and payment token (or I can show business/economy fares first).      
+- Or would you like me to hold/compare first-class seat amenities (lounge access, baggage allowance) or check seat maps?
+
+> Query:
