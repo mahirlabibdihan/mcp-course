@@ -16,17 +16,17 @@ load_dotenv()  # load environment variables from .env
 
 class MCPClient:
     def __init__(self):
-        # Initialize session and client objects
-        self.session: Optional[ClientSession] = None
+        # Initialize server and client objects
+        self.client: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         # Initialize OpenAI client (supports OpenRouter via base_url)
         openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.client = OpenAI(
+        self.llm = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=openai_api_key,
         )
         self.model = "openai/gpt-5-mini"
-        self.servers = []
+        self.clients = []
         self.tools = []
 
     async def process_llm_response(self, llm_response: str) -> str:
@@ -54,11 +54,11 @@ class MCPClient:
                 logging.info(f"Executing tool: {tool_call['tool']}")
                 logging.info(f"With arguments: {tool_call['arguments']}")
 
-                response = await self.session.list_tools()
+                response = await self.client.list_tools()
                 tools = response.tools
                 if any(tool.name == tool_call["tool"] for tool in tools):
                     try:
-                        result = await self.session.call_tool(tool_call["tool"], tool_call["arguments"])
+                        result = await self.client.call_tool(tool_call["tool"], tool_call["arguments"])
                         final_text.append(f"[Calling tool {tool_call['tool']} with args {tool_call['arguments']}]")
 
                         if isinstance(result, dict) and "progress" in result:
@@ -104,16 +104,16 @@ class MCPClient:
 
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
         self.stdio, self.write = stdio_transport
-        self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
+        self.client = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
         
-        await self.session.initialize()
+        await self.client.initialize()
         
         # List available tools
-        response = await self.session.list_tools()
+        response = await self.client.list_tools()
         tools = response.tools
         self.tools.append(tools)
         print("\nConnected to server with tools:", [tool.name for tool in tools])
-        self.servers.append(self.session)
+        self.clients.append(self.client)
 
     def format_for_llm(self, tool: Tool) -> str:
         """Format tool information for LLM.
@@ -174,7 +174,7 @@ Arguments:
         
         # Call OpenAI synchronously in a thread to avoid blocking the event loop
         def _call_openai():
-            return self.extract_text(self.client.chat.completions.create(
+            return self.extract_text(self.llm.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=1000,
@@ -199,9 +199,9 @@ Arguments:
         """Run an interactive chat loop"""
         print("\nMCP Client Started!")
         print("Type your queries or 'quit' to exit.")
-        response = await self.session.list_tools()
+        # response = await self.client.list_tools()
  
-        tools_description = "\n".join([self.format_for_llm(tool) for tool in response.tools])
+        tools_description = "\n".join([self.format_for_llm(tool) for tool in self.tools[0]])
         
         system_message = (
             "You are a helpful assistant with access to these tools:\n\n"

@@ -1,0 +1,107 @@
+(base) PS D:\Work\Samsung\mcp-course\mcp-host> uv run host.py ..\mcp-server\weather.py
+
+Connected to server with tools: ['get_alerts', 'get_forecast']
+
+MCP Client Started!
+Type your queries or 'quit' to exit.
+2026-02-21 22:22:27,477 - INFO -
+# System Prompt:
+You are a helpful assistant with access to these tools:
+
+Tool: get_alerts
+Description: Get weather alerts for a US state.
+
+Args:
+    state: Two-letter US state code (e.g. CA, NY)
+Arguments:
+- state: No description (required)
+
+Tool: get_forecast
+Description: Get weather forecast for a location.
+
+Args:
+    latitude: Latitude of the location (recommended: up to 4 decimal places)
+    longitude: Longitude of the location (recommended: up to 4 decimal places)
+Arguments:
+- latitude: No description (required)
+- longitude: No description (required)
+
+Choose the appropriate tool based on the user's question. If no tool is needed, reply directly.
+
+IMPORTANT: When you need to use a tool, you must ONLY respond with the exact JSON object format below, nothing else:
+{
+    "tool": "tool-name",
+    "arguments": {
+        "argument-name": "value"
+    }
+}
+
+After receiving a tool's response:
+1. Transform the raw data into a natural, conversational response
+2. Keep responses concise but informative
+3. Focus on the most relevant information
+4. Use appropriate context from the user's question
+5. Avoid simply repeating the raw data
+
+Please use only the tools that are explicitly defined above.
+
+> Query: What is the weather in New York?
+2026-02-21 22:22:51,954 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-21 22:23:00,526 - INFO - 
+> Assistant: Do you mean New York City (Manhattan) or somewhere else in New York State? Also, do you want the current conditions or a forecast (today/next few days)?
+
+> Query: Manhattan. Today.
+2026-02-21 22:23:14,899 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-21 22:23:20,214 - INFO - 
+> Assistant: {
+    "tool": "get_forecast",
+    "arguments": {
+        "latitude": "40.7831",
+        "longitude": "-73.9712"
+    }
+}
+2026-02-21 22:23:20,229 - INFO - Executing tool: get_forecast
+2026-02-21 22:23:20,229 - INFO - With arguments: {'latitude': '40.7831', 'longitude': '-73.9712'}
+2026-02-21 22:23:22,402 - INFO - 
+> Tool execution result:
+
+Today:
+Temperature: 47°F
+Wind: 6 mph NW
+Forecast: Mostly sunny. High near 47, with temperatures falling to around 45 in the afternoon. Northwest wind around 6 mph.        
+
+---
+
+Tonight:
+Temperature: 35°F
+Wind: 2 to 7 mph NE
+Forecast: A chance of rain and snow after 1am. Mostly cloudy. Low around 35, with temperatures rising to around 38 overnight. Northeast wind 2 to 7 mph. Chance of precipitation is 50%.
+
+---
+
+Sunday:
+Temperature: 37°F
+Wind: 7 to 16 mph E
+Forecast: Rain and snow. Cloudy. High near 37, with temperatures falling to around 32 in the afternoon. Wind chill values as low as 21. East wind 7 to 16 mph, with gusts as high as 28 mph. Chance of precipitation is 90%. New snow accumulation of 1 to 3 inches possible.
+
+---
+
+Sunday Night:
+Temperature: 29°F
+Wind: 18 to 30 mph NE
+Forecast: Snow before 1am, then snow and areas of blowing snow. Cloudy, with a low around 29. Wind chill values as low as 14. Northeast wind 18 to 30 mph, with gusts as high as 43 mph. Chance of precipitation is 90%. New snow accumulation of 9 to 13 inches possible.
+
+---
+
+Monday:
+Temperature: 34°F
+Wind: 21 to 30 mph N
+Forecast: Snow and areas of blowing snow before 1pm, then areas of blowing snow and a chance of snow. Cloudy, with a high near 34. North wind 21 to 30 mph, with gusts as high as 44 mph. Chance of precipitation is 90%. New snow accumulation of 8 to 12 inches possible.
+
+2026-02-21 22:23:22,773 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-21 22:23:28,053 - INFO - 
+> Final response: Right now in Manhattan: 47°F and mostly sunny. Today’s high is near 47°F, with temperatures slowly falling toward about 45°F this afternoon. Northwest wind around 6 mph.
+
+Tonight: mostly cloudy with a 50% chance of rain/snow after 1 AM, low around 35°F.
+
+> Query: quit

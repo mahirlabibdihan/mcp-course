@@ -1,4 +1,4 @@
-(mcp-client) PS D:\Work\Samsung\mcp-course\mcp-client> uv run .\client-rag.py "D:\Work\Samsung\mcp-course\flight-sim-mcp\server.py"
+(mcp-host) PS D:\Work\Samsung\mcp-course\mcp-host> uv run .\host-rag.py "D:\Work\Samsung\mcp-course\flight-sim-mcp\server.py"
 
 Connected to server with tools: ['search_flights', 'get_flight_details', 'create_booking', 'get_booking', 'cancel_booking', 'check_in']
 2025-12-25 13:53:27,694 - INFO - BM25 index created for 6 tools
