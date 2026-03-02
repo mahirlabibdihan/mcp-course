@@ -54,8 +54,8 @@ class MCPClient:
                 logging.info(f"Executing tool: {tool_call['tool']}")
                 logging.info(f"With arguments: {tool_call['arguments']}")
 
-                response = await self.client.list_tools()
-                tools = response.tools
+                # response = await self.client.list_tools()
+                tools = self.tools[0]
                 if any(tool.name == tool_call["tool"] for tool in tools):
                     try:
                         result = await self.client.call_tool(tool_call["tool"], tool_call["arguments"])
