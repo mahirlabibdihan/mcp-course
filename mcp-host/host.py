@@ -10,11 +10,18 @@ from pathlib import Path
 from mcp.types import Tool
 import os
 import logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
+from rich.console import Console
+from rich.panel import Panel
+from rich.markdown import Markdown
+from rich.rule import Rule
+logging.basicConfig(level=logging.WARNING)
+console = Console()
 load_dotenv()  # load environment variables from .env
 
 
-class MCPClient:
+class MCPHost:
     def __init__(self):
         # Initialize server and client objects
         self.client: Optional[ClientSession] = None
@@ -26,7 +33,6 @@ class MCPClient:
             api_key=openai_api_key,
         )
         self.model = "openai/gpt-5-mini"
-        self.clients = []
         self.tools = []
 
     async def process_llm_response(self, llm_response: str) -> str:
@@ -51,27 +57,23 @@ class MCPClient:
         try:
             tool_call = json.loads(_clean_json_string(llm_response))
             if "tool" in tool_call and "arguments" in tool_call:
-                logging.info(f"Executing tool: {tool_call['tool']}")
-                logging.info(f"With arguments: {tool_call['arguments']}")
+                console.print(f"[bold yellow]Executing tool:[/] [green]{tool_call['tool']}[/]")
+                console.print(f"[dim]Arguments:[/] {tool_call['arguments']}")
 
-                # response = await self.client.list_tools()
-                tools = self.tools[0]
-                if any(tool.name == tool_call["tool"] for tool in tools):
+                if any(tool.name == tool_call["tool"] for tool in self.tools):
                     try:
                         result = await self.client.call_tool(tool_call["tool"], tool_call["arguments"])
                         final_text.append(f"[Calling tool {tool_call['tool']} with args {tool_call['arguments']}]")
 
-                        if isinstance(result, dict) and "progress" in result:
-                            progress = result["progress"]
-                            total = result["total"]
-                            percentage = (progress / total) * 100
-                            logging.info(f"Progress: {progress}/{total} ({percentage:.1f}%)")
-
-                        logging.info(f"\n> Tool execution result: \n{result.content[0].text}")
+                        console.print(Panel(
+                            result.content[0].text,
+                            title="[bold cyan]Tool Result[/]",
+                            border_style="cyan",
+                        ))
                         return f"Tool execution result: {result.content[0].text}"
                     except Exception as e:
                         error_msg = f"Error executing tool: {str(e)}"
-                        logging.error(error_msg)
+                        console.print(f"[bold red]Error executing tool:[/] {error_msg}")
                         return error_msg
 
                 return f"No server found with tool: {tool_call['tool']}"
@@ -79,41 +81,33 @@ class MCPClient:
         except json.JSONDecodeError:
             return llm_response
         
-    async def connect_to_server(self, server_script_path: str):
+    async def connect_to_server(self, server_url: str):
         """Connect to an MCP server
         
         Args:
-            server_script_path: Path to the server script (.py or .js)
+            server_url: The URL of the MCP server (e.g. http://localhost:8000)
         """
-        is_python = server_script_path.endswith('.py')
-        is_js = server_script_path.endswith('.js')
-        if not (is_python or is_js):
-            raise ValueError("Server script must be a .py or .js file")
 
-        if is_python:
-            path = Path(server_script_path).resolve()
-            server_params = StdioServerParameters(
-                command="uv",
-                args=["--directory", str(path.parent), "run", path.name],
-                env=None,
-            )
-        else:
-            server_params = StdioServerParameters(
-                command="node", args=[server_script_path], env=None
-            )
+        read, write, _ = await self.exit_stack.enter_async_context(
+            streamablehttp_client(server_url + "/mcp")
+        )
 
-        stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
-        self.stdio, self.write = stdio_transport
-        self.client = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
-        
+        self.client = await self.exit_stack.enter_async_context(
+            ClientSession(read, write)
+        )
+
         await self.client.initialize()
         
         # List available tools
         response = await self.client.list_tools()
         tools = response.tools
-        self.tools.append(tools)
-        print("\nConnected to server with tools:", [tool.name for tool in tools])
-        self.clients.append(self.client)
+        self.tools = tools
+        tool_names = ", ".join(f"[green]{t.name}[/]" for t in tools)
+        console.print(Panel(
+            f"[bold]Available tools:[/] {tool_names}",
+            title="[bold green]Connected to MCP Server[/]",
+            border_style="green",
+        ))
 
     def format_for_llm(self, tool: Tool) -> str:
         """Format tool information for LLM.
@@ -166,44 +160,15 @@ Arguments:
             text = str(resp)
         return text
     
-    async def process_query(self, query: str, messages) -> str:
-        """Process a query using Claude and available tools"""
+    def get_tools_description(self, query: str, messages: List[dict]) -> str:
         # Describe available tools to the model and include the user query
-        messages.append({"role": "user", "content": query})
-        import json
-        
-        # Call OpenAI synchronously in a thread to avoid blocking the event loop
-        def _call_openai():
-            return self.extract_text(self.llm.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=1000,
-                # tools=available_tools,
-            ))
+        tools_description = "\n".join([self.format_for_llm(tool) for tool in self.tools])
+        return tools_description
+    
+    def get_system_prompt(self, query: str, messages: List[dict]) -> str:
+        tools_description = self.get_tools_description(query, messages)
 
-        text = await asyncio.to_thread(_call_openai)
-        logging.info("\n> Assistant: %s", text)
-        
-        result = await self.process_llm_response(text)
-        if result != text:
-            messages.append({"role": "assistant", "content": text})
-            messages.append({"role": "system", "content": result})
-            final_response = await asyncio.to_thread(_call_openai)
-            logging.info("\n> Final response: %s", final_response)
-            messages.append({"role": "assistant", "content": final_response})
-        else:
-            messages.append({"role": "assistant", "content": text})
-        return result
-
-    async def chat_loop(self):
-        """Run an interactive chat loop"""
-        print("\nMCP Client Started!")
-        print("Type your queries or 'quit' to exit.")
-        # response = await self.client.list_tools()
- 
-        tools_description = "\n".join([self.format_for_llm(tool) for tool in self.tools[0]])
-        
-        system_message = (
+        system_prompt = (
             "You are a helpful assistant with access to these tools:\n\n"
             f"{tools_description}\n"
             "Choose the appropriate tool based on the user's question. "
@@ -224,33 +189,82 @@ Arguments:
             "5. Avoid simply repeating the raw data\n\n"
             "Please use only the tools that are explicitly defined above."
         )
+        
+        return system_prompt
+        
+    async def process_query(self, query: str, messages) -> str:
+        """Process a query using Claude and available tools"""
+        
+        system_prompt = self.get_system_prompt(query, messages)
+        # logging.info(f"\n# System Prompt: \n{system_prompt}")
+        
+        # Describe available tools to the model and include the user query
+        messages.append({"role": "user", "content": query})
+        import json
+        
+        # Call OpenAI synchronously in a thread to avoid blocking the event loop
+        def _call_openai():
+            return self.extract_text(self.llm.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *messages,
+                ],
+                max_tokens=1000,
+                # tools=available_tools,
+            ))
 
-        logging.info(f"\n# System Prompt: \n{system_message}")
-        messages = [
-            {"role": "system", "content": system_message},
-        ]
+        text = await asyncio.to_thread(_call_openai)
+        console.print(f"[dim]Assistant (raw):[/] {text}")
+        
+        result = await self.process_llm_response(text)
+        if result != text:
+            messages.append({"role": "assistant", "content": text})
+            messages.append({"role": "system", "content": result})
+            final_response = await asyncio.to_thread(_call_openai)
+            console.print(Panel(
+                Markdown(final_response),
+                title="[bold blue]Assistant[/]",
+                border_style="blue",
+            ))
+            messages.append({"role": "assistant", "content": final_response})
+        else:
+            console.print(Panel(
+                Markdown(text),
+                title="[bold blue]Assistant[/]",
+                border_style="blue",
+            ))
+            messages.append({"role": "assistant", "content": text})
+        return result
+
+    async def chat_loop(self):
+        """Run an interactive chat loop"""
+        console.print(Panel(
+            "[bold]Type your queries or [red]quit[/red] to exit.[/]",
+            title="[bold magenta]MCP Host Started[/]",
+            border_style="magenta",
+        ))
+
+        messages = []
         while True:
             try:
-                query = input("\n> Query: ").strip()
+                console.print(Rule(style="dim"))
+                query = console.input("[bold cyan]Query:[/] ").strip()
                 if query.lower() == 'quit':
+                    console.print("[dim]Goodbye![/]")
                     break
                 response = await self.process_query(query, messages)
-                # print("\n" + response)
             except Exception as e:
-                print(f"\nError: {e}")
+                console.print(f"[bold red]Error:[/] {e}")
     
     async def cleanup(self):
         """Clean up resources"""
         await self.exit_stack.aclose()
 
 async def main():
-    if len(sys.argv) < 2:
-        print("Usage: uv run client.py <path_to_server_script>")
-        sys.exit(1)
-        
-    client = MCPClient()
+    client = MCPHost()
     try:
-        await client.connect_to_server(sys.argv[1])
+        await client.connect_to_server("http://localhost:8000")
         await client.chat_loop()
     finally:
         await client.cleanup()
@@ -258,3 +272,5 @@ async def main():
 if __name__ == "__main__":
     import sys
     asyncio.run(main())
+    
+# uv run host.py ../mcp-server/weather.py

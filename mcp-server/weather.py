@@ -92,7 +92,8 @@ Forecast: {period['detailedForecast']}
 
 def main():
     # Initialize and run the server
-    mcp.run(transport='stdio')
+    # mcp.run(transport='stdio')
+    mcp.run(transport='http', host='0.0.0.0', port=8000)
 
 if __name__ == "__main__":
     main()
